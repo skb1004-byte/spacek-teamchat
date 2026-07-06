@@ -48,8 +48,13 @@
   .view{position:absolute;inset:0;display:flex;flex-direction:column;padding:16px;overflow:auto}
   /* chat */
   #chatList{flex:1;overflow:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px}
-  .msg{max-width:74%;padding:10px 13px;border-radius:14px;background:var(--panel);border:1px solid var(--line);
+  .msg{position:relative;max-width:74%;padding:10px 13px;border-radius:14px;background:var(--panel);border:1px solid var(--line);
     align-self:flex-start;font-size:14px;line-height:1.5;word-break:break-word}
+  .msg .del{position:absolute;top:-8px;right:-8px;width:20px;height:20px;padding:0;border:1px solid var(--line);
+    border-radius:50%;background:#2a1620;color:#e2506b;font-size:12px;line-height:18px;text-align:center;cursor:pointer;
+    opacity:0;transition:.15s}
+  .msg:hover .del{opacity:1}
+  .msg .del:hover{background:var(--danger);color:#fff}
   .msg.me{align-self:flex-end;background:linear-gradient(180deg,#20304f,#1a2540);border-color:#2c3d63}
   .msg.ai{background:linear-gradient(180deg,#2a2338,#211b2e);border-color:#3a2f4d}
   .msg .nm{font-size:11px;color:var(--gold);margin-bottom:3px;font-weight:700}
@@ -346,15 +351,33 @@ function renderMsg(m){
   const div = document.createElement("div");
   const isMe = m.name===me, isAI = m.name==="AI";
   div.className = "msg" + (isAI?" ai":(isMe?" me":""));
+  if(m.id!=null) div.dataset.mid = String(m.id);
   let body = "";
   if(m.text) body += esc(m.text).replace(/\n/g,"<br>");
   if(m.file_url){
     if((m.file_type||"").startsWith("image")) body += `<img src="${m.file_url}" onclick="lightbox('${m.file_url}')" />`;
     else body += `<a class="file" href="${m.file_url}" target="_blank" download>📄 ${esc(m.file_name||"파일")}</a>`;
   }
-  div.innerHTML = `<div class="nm">${esc(m.name)}</div>${body}<div class="t">${fmtTime(m.created_at)}</div>`;
+  const del = (isMe && m.id!=null) ? `<button class="del" title="삭제" onclick="deleteMsg('${String(m.id).replace(/'/g,"")}')">✕</button>` : "";
+  div.innerHTML = `${del}<div class="nm">${esc(m.name)}</div>${body}<div class="t">${fmtTime(m.created_at)}</div>`;
   list.appendChild(div);
   list.scrollTop = list.scrollHeight;
+}
+function removeMsgEl(id){
+  const el = document.querySelector('#chatList .msg[data-mid="'+CSS.escape(String(id))+'"]');
+  if(el) el.remove();
+}
+async function deleteMsg(id){
+  if(!confirm("이 메시지를 삭제할까요? (되돌릴 수 없습니다)")) return;
+  if(sb){
+    const { error } = await sb.from("messages").delete().eq("id", id);
+    if(error){ console.error(error); toast("삭제 실패 — Supabase 삭제 정책(delete policy)을 추가하세요"); return; }
+    removeMsgEl(id);
+  }else{
+    const arr = localGet("messages").filter(m=>String(m.id)!==String(id));
+    localSet("messages", arr);
+    removeMsgEl(id);
+  }
 }
 async function pushMsg(m){
   m.created_at = m.created_at || nowISO();
@@ -363,6 +386,7 @@ async function pushMsg(m){
     if(error){ console.error(error); toast("전송 실패"); }
     // realtime 구독이 렌더링 담당
   }else{
+    m.id = m.id || (Date.now()+"_"+Math.random().toString(36).slice(2,7));
     const arr = localGet("messages"); arr.push(m); localSet("messages", arr);
     renderMsg(m);
   }
@@ -371,6 +395,9 @@ function subscribeChat(){
   chatChannel = sb.channel("room-messages")
     .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},payload=>{
       renderMsg(payload.new);
+    })
+    .on("postgres_changes",{event:"DELETE",schema:"public",table:"messages"},payload=>{
+      if(payload.old && payload.old.id!=null) removeMsgEl(payload.old.id);
     }).subscribe();
 }
 function chatKey(e){ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendChat(); } }
