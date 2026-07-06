@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SpaceK TeamChat — 팀 채팅 · 회의분석 · 일일브리핑</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#0b0d12; --bg2:#12151d; --panel:#161a24; --panel2:#1d2230;
+    --line:#252b3a; --txt:#e8ecf4; --dim:#8b93a7; --gold:#c9a35c; --gold2:#e4c886;
+    --accent:#5b8cff; --ok:#3ec98a; --warn:#e6a23c; --danger:#e2506b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",sans-serif;
+    background:radial-gradient(1200px 600px at 80% -10%,#1a1f2e 0,var(--bg) 55%);color:var(--txt);height:100vh;overflow:hidden}
+  button{font-family:inherit;cursor:pointer}
+  input,textarea{font-family:inherit}
+  .hidden{display:none!important}
+  /* screens */
+  .center{height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);
+    border-radius:18px;padding:34px;width:100%;max-width:420px;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+  .brand{font-size:26px;font-weight:800;letter-spacing:.5px}
+  .brand span{color:var(--gold)}
+  .sub{color:var(--dim);font-size:13px;margin:6px 0 22px}
+  label{display:block;font-size:12px;color:var(--dim);margin:14px 0 6px}
+  .in{width:100%;padding:12px 14px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;
+    color:var(--txt);font-size:14px;outline:none}
+  .in:focus{border-color:var(--gold)}
+  .btn{width:100%;margin-top:20px;padding:12px 14px;border:none;border-radius:10px;font-weight:700;font-size:14px;
+    background:linear-gradient(90deg,var(--gold),var(--gold2));color:#1a1406}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--txt)}
+  .btn.sm{width:auto;margin:0;padding:8px 14px;font-size:13px}
+  .err{color:var(--danger);font-size:13px;margin-top:12px;min-height:16px}
+  .hint{color:var(--dim);font-size:12px;margin-top:14px;line-height:1.6}
+  /* app layout */
+  #app{display:flex;flex-direction:column;height:100vh}
+  header{display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid var(--line);
+    background:rgba(18,21,29,.7);backdrop-filter:blur(6px)}
+  header .brand{font-size:18px}
+  .who{margin-left:auto;color:var(--dim);font-size:13px}
+  .who b{color:var(--gold2)}
+  .tabs{display:flex;gap:4px;padding:8px 14px;border-bottom:1px solid var(--line);background:var(--bg2);overflow-x:auto}
+  .tab{padding:8px 16px;border-radius:9px;font-size:13px;color:var(--dim);background:transparent;border:none;white-space:nowrap}
+  .tab.on{background:var(--panel2);color:var(--gold2);font-weight:700}
+  main{flex:1;overflow:hidden;position:relative}
+  .view{position:absolute;inset:0;display:flex;flex-direction:column;padding:16px;overflow:auto}
+  /* chat */
+  #chatList{flex:1;overflow:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px}
+  .msg{max-width:74%;padding:10px 13px;border-radius:14px;background:var(--panel);border:1px solid var(--line);
+    align-self:flex-start;font-size:14px;line-height:1.5;word-break:break-word}
+  .msg.me{align-self:flex-end;background:linear-gradient(180deg,#20304f,#1a2540);border-color:#2c3d63}
+  .msg.ai{background:linear-gradient(180deg,#2a2338,#211b2e);border-color:#3a2f4d}
+  .msg .nm{font-size:11px;color:var(--gold);margin-bottom:3px;font-weight:700}
+  .msg.me .nm{color:#9db8ff}
+  .msg img{max-width:220px;border-radius:8px;margin-top:6px;cursor:pointer;display:block}
+  .msg a.file{color:var(--gold2);font-size:13px;text-decoration:underline}
+  .msg .t{font-size:10px;color:var(--dim);margin-top:4px;text-align:right}
+  .composer{display:flex;gap:8px;padding-top:12px;align-items:flex-end}
+  .composer textarea{flex:1;resize:none;min-height:44px;max-height:120px;padding:11px 13px;background:var(--bg2);
+    border:1px solid var(--line);border-radius:12px;color:var(--txt);font-size:14px;outline:none}
+  .iconbtn{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--panel);
+    color:var(--txt);font-size:18px;flex:none}
+  .send{background:linear-gradient(90deg,var(--gold),var(--gold2));color:#1a1406;border:none}
+  /* generic */
+  h2.vt{margin:0 0 4px;font-size:18px}
+  .vd{color:var(--dim);font-size:13px;margin-bottom:14px}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px}
+  .box h3{margin:0 0 8px;font-size:15px;color:var(--gold2)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .pill{font-size:11px;padding:3px 9px;border-radius:20px;background:var(--panel2);color:var(--dim);border:1px solid var(--line)}
+  .pill.rec{background:#3a1620;color:#ff9db0;border-color:#5a2030;animation:pulse 1.2s infinite}
+  @keyframes pulse{50%{opacity:.5}}
+  .ai-out{white-space:pre-wrap;font-size:14px;line-height:1.65;color:var(--txt)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:600}
+  .done{text-decoration:line-through;color:var(--dim)}
+  .muted{color:var(--dim);font-size:13px}
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;max-width:520px;width:100%;max-height:88vh;overflow:auto}
+  #lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;z-index:60}
+  #lightbox img{max-width:92vw;max-height:92vh;border-radius:8px}
+  /* toast */
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#000;border:1px solid var(--line);
+    color:#fff;padding:11px 18px;border-radius:10px;font-size:13px;z-index:80;opacity:0;transition:.25s;pointer-events:none}
+  #toast.show{opacity:1}
+  .modebadge{font-size:11px;padding:3px 9px;border-radius:20px;border:1px solid var(--line)}
+  .modebadge.team{background:#12321f;color:#7cf0ad;border-color:#1f5030}
+  .modebadge.local{background:#33260f;color:#f0c778;border-color:#5a4520}
+</style>
+</head>
+<body>
+
+<!-- ============ CONFIG (first run) ============ -->
+<div id="configScreen" class="center hidden">
+  <div class="card">
+    <div class="brand">Space<span>K</span> TeamChat</div>
+    <div class="sub">무료로 팀과 함께 쓰는 채팅 · 회의분석 앱 설정</div>
+
+    <label>① 팀 실시간 연결 (Supabase · 무료) — 선택</label>
+    <input id="cfgUrl" class="in" placeholder="Supabase Project URL (https://xxx.supabase.co)" />
+    <input id="cfgKey" class="in" style="margin-top:8px" placeholder="Supabase anon key" />
+    <div class="hint">비워두면 <b>이 기기에서만</b> 저장되는 로컬 데모로 실행됩니다. 팀원과 실시간 공유하려면 무료 Supabase 프로젝트 값을 넣으세요. (설정 방법은 함께 드린 안내문 참조)</div>
+
+    <label>② AI 기능 (Google Gemini · 무료) — 선택</label>
+    <input id="cfgGemini" class="in" placeholder="Gemini API Key (무료, 카드 불필요)" />
+    <div class="hint">@AI 응답 · 회의 자동요약 · 일일 브리핑에 사용됩니다. 없으면 채팅·파일공유·녹음은 되고 AI만 꺼집니다. 키는 <b>이 기기</b>에만 저장됩니다.</div>
+
+    <label>③ 로컬 데모용 공용 비번 (팀 연결 시엔 서버 검증)</label>
+    <input id="cfgPass" class="in" value="1234" />
+
+    <button class="btn" onclick="saveConfig()">저장하고 시작</button>
+    <div class="hint">언제든 앱 안 <b>설정</b> 탭에서 바꿀 수 있습니다.</div>
+  </div>
+</div>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginScreen" class="center hidden">
+  <div class="card">
+    <div class="brand">Space<span>K</span> TeamChat</div>
+    <div class="sub">이름과 비밀번호로 입장하세요</div>
+    <label>이름</label>
+    <input id="loginName" class="in" placeholder="예: 홍길동" autocomplete="off" />
+    <label>비밀번호</label>
+    <input id="loginPass" class="in" type="password" placeholder="비밀번호" autocomplete="off" />
+    <button class="btn" onclick="doLogin()">입장</button>
+    <div id="loginErr" class="err"></div>
+    <div class="hint"><span id="modeInfo"></span></div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <header>
+    <div class="brand">Space<span>K</span> TeamChat</div>
+    <span id="modeBadge" class="modebadge local">로컬</span>
+    <div class="who">접속: <b id="meName"></b></div>
+    <button class="btn ghost sm" style="margin-left:12px" onclick="logout()">나가기</button>
+  </header>
+  <div class="tabs">
+    <button class="tab on" data-v="chat" onclick="showView('chat')">💬 채팅</button>
+    <button class="tab" data-v="meeting" onclick="showView('meeting')">🎙 회의</button>
+    <button class="tab" data-v="brief" onclick="showView('brief')">📋 브리핑</button>
+    <button class="tab" data-v="dash" onclick="showView('dash')">📊 대시보드</button>
+    <button class="tab" data-v="settings" onclick="showView('settings')">⚙️ 설정</button>
+  </div>
+  <main>
+    <!-- CHAT -->
+    <section id="view-chat" class="view">
+      <div id="chatList"></div>
+      <div class="composer">
+        <button class="iconbtn" title="파일/이미지" onclick="filePick.click()">📎</button>
+        <input type="file" id="filePick" class="hidden" onchange="onFile(event)" />
+        <textarea id="chatInput" placeholder="메시지 입력…  (AI에게 물으려면 @AI 로 시작)" onkeydown="chatKey(event)"></textarea>
+        <button class="iconbtn send" onclick="sendChat()">➤</button>
+      </div>
+    </section>
+
+    <!-- MEETING -->
+    <section id="view-meeting" class="view hidden">
+      <h2 class="vt">회의 녹음 · AI 분석</h2>
+      <div class="vd">회의를 시작하면 마이크 음성을 실시간 인식(한국어)하고, 종료 시 AI가 참석자·결정사항·액션아이템·직원별 성과로 요약합니다.</div>
+      <div class="box">
+        <div class="row">
+          <input id="meetTitle" class="in" style="flex:1;min-width:180px" placeholder="회의 제목 (예: 7/6 주간회의)" />
+          <button id="recBtn" class="btn sm" onclick="toggleRec()">● 회의 시작</button>
+          <span id="recPill" class="pill hidden">녹음중</span>
+        </div>
+        <textarea id="transcript" class="in" style="margin-top:12px;min-height:150px" placeholder="여기 회의 내용이 실시간으로 기록됩니다. (음성인식 미지원 브라우저면 회의록을 직접 붙여넣고 분석하세요)"></textarea>
+        <div class="row" style="margin-top:10px">
+          <button class="btn sm" onclick="analyzeMeeting()">🧠 AI로 분석·저장</button>
+          <button class="btn ghost sm" onclick="document.getElementById('transcript').value=''">지우기</button>
+        </div>
+      </div>
+      <div id="meetResult"></div>
+      <div class="box">
+        <h3>지난 회의 기록</h3>
+        <div id="meetHistory" class="muted">아직 저장된 회의가 없습니다.</div>
+      </div>
+    </section>
+
+    <!-- BRIEFING -->
+    <section id="view-brief" class="view hidden">
+      <h2 class="vt">일일 브리핑</h2>
+      <div class="vd">누적 회의 요약 · 미해결 액션아이템 · 최근 대화를 종합해 회의 전 브리핑을 생성합니다.</div>
+      <div class="box">
+        <button class="btn sm" onclick="makeBriefing()">📋 오늘의 브리핑 생성</button>
+      </div>
+      <div id="briefOut"></div>
+    </section>
+
+    <!-- DASHBOARD -->
+    <section id="view-dash" class="view hidden">
+      <h2 class="vt">팀원 대시보드</h2>
+      <div class="vd">직원별 액션아이템과 성과를 집계합니다.</div>
+      <div id="dashOut"></div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="view-settings" class="view hidden">
+      <h2 class="vt">설정</h2>
+      <div class="vd">연결·AI·비번을 변경합니다. 저장하면 새로고침됩니다.</div>
+      <div class="box">
+        <label>Supabase URL</label><input id="setUrl" class="in" />
+        <label>Supabase anon key</label><input id="setKey" class="in" />
+        <label>Gemini API Key</label><input id="setGemini" class="in" />
+        <label>로컬 공용 비번</label><input id="setPass" class="in" />
+        <button class="btn sm" style="margin-top:16px" onclick="saveSettings()">저장</button>
+        <button class="btn ghost sm" style="margin-top:16px" onclick="wipeLocal()">로컬 데이터 초기화</button>
+      </div>
+      <div class="box">
+        <h3>상태</h3>
+        <div id="statusOut" class="muted"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="lightbox" class="hidden" onclick="this.classList.add('hidden')"><img id="lightImg" /></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ---------------- config / state ---------------- */
+const LS = window.localStorage;
+let cfg = JSON.parse(LS.getItem("spacek_cfg") || "null");
+let sb = null;            // supabase client (team mode) or null (local)
+let me = null;           // current user name
+let chatChannel = null;
+
+function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");
+  clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),2600);}
+function esc(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function nowISO(){return new Date().toISOString();}
+function fmtTime(iso){try{return new Date(iso).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});}catch(e){return "";}}
+
+/* ---------------- boot ---------------- */
+function boot(){
+  if(!cfg){ show("configScreen"); return; }
+  initClient();
+  show("loginScreen");
+  const teamMode = !!sb;
+  document.getElementById("modeInfo").innerHTML = teamMode
+    ? "🟢 <b>팀 연결됨</b> — 팀원과 실시간 공유됩니다."
+    : "🟡 <b>로컬 데모</b> — 이 기기에서만 저장됩니다. 팀 공유는 설정에서 Supabase 연결.";
+}
+function initClient(){
+  sb = null;
+  if(cfg.supaUrl && cfg.supaKey && window.supabase){
+    try{ sb = window.supabase.createClient(cfg.supaUrl, cfg.supaKey); }
+    catch(e){ console.error("supabase init fail", e); toast("Supabase 연결 실패 — 로컬 모드로 실행"); }
+  }
+}
+function show(id){
+  for(const el of document.querySelectorAll("#configScreen,#loginScreen,#app")) el.classList.add("hidden");
+  document.getElementById(id).classList.remove("hidden");
+}
+
+/* ---------------- config save ---------------- */
+function saveConfig(){
+  cfg = {
+    supaUrl: document.getElementById("cfgUrl").value.trim(),
+    supaKey: document.getElementById("cfgKey").value.trim(),
+    geminiKey: document.getElementById("cfgGemini").value.trim(),
+    password: document.getElementById("cfgPass").value.trim() || "1234"
+  };
+  LS.setItem("spacek_cfg", JSON.stringify(cfg));
+  toast("저장되었습니다");
+  boot();
+}
+
+/* ---------------- auth ---------------- */
+async function doLogin(){
+  const name = document.getElementById("loginName").value.trim();
+  const pass = document.getElementById("loginPass").value;
+  const err = document.getElementById("loginErr");
+  err.textContent = "";
+  if(!name){ err.textContent = "이름을 입력하세요."; return; }
+  let ok = false;
+  if(sb){
+    // 서버측 비번 검증 (RPC). 실패 시 안내.
+    try{
+      const { data, error } = await sb.rpc("check_login", { p_name: name, p_pass: pass });
+      if(error){ throw error; }
+      ok = data === true;
+    }catch(e){
+      console.error(e);
+      err.textContent = "서버 검증 실패 — Supabase 설정(check_login 함수)을 확인하세요.";
+      return;
+    }
+  }else{
+    ok = (pass === (cfg.password || "1234"));
+  }
+  if(!ok){ err.textContent = "비밀번호가 올바르지 않습니다."; return; }
+  me = name;
+  enterApp();
+}
+
+function enterApp(){
+  show("app");
+  document.getElementById("meName").textContent = me;
+  const badge = document.getElementById("modeBadge");
+  if(sb){ badge.textContent="팀 연결"; badge.className="modebadge team"; }
+  else{ badge.textContent="로컬"; badge.className="modebadge local"; }
+  loadChat();
+  if(sb) subscribeChat();
+  renderMeetHistory();
+  showView("chat");
+}
+function logout(){ me=null; chatChannel && sb && sb.removeChannel(chatChannel); show("loginScreen"); }
+
+/* ---------------- views ---------------- */
+function showView(v){
+  for(const el of document.querySelectorAll(".view")) el.classList.add("hidden");
+  document.getElementById("view-"+v).classList.remove("hidden");
+  for(const t of document.querySelectorAll(".tab")) t.classList.toggle("on", t.dataset.v===v);
+  if(v==="dash") renderDashboard();
+  if(v==="settings") fillSettings();
+  if(v==="meeting") renderMeetHistory();
+}
+
+/* ---------------- local storage helpers ---------------- */
+function localGet(k){ return JSON.parse(LS.getItem("spacek_"+k) || "[]"); }
+function localSet(k,v){ LS.setItem("spacek_"+k, JSON.stringify(v)); }
+
+/* ---------------- chat ---------------- */
+async function loadChat(){
+  let msgs = [];
+  if(sb){
+    const { data, error } = await sb.from("messages").select("*").order("created_at",{ascending:true}).limit(200);
+    if(error){ console.error(error); toast("메시지 로드 실패"); }
+    msgs = data || [];
+  }else{
+    msgs = localGet("messages");
+  }
+  const list = document.getElementById("chatList");
+  list.innerHTML = "";
+  for(const m of msgs) renderMsg(m);
+  list.scrollTop = list.scrollHeight;
+}
+function renderMsg(m){
+  const list = document.getElementById("chatList");
+  const div = document.createElement("div");
+  const isMe = m.name===me, isAI = m.name==="AI";
+  div.className = "msg" + (isAI?" ai":(isMe?" me":""));
+  let body = "";
+  if(m.text) body += esc(m.text).replace(/\n/g,"<br>");
+  if(m.file_url){
+    if((m.file_type||"").startsWith("image")) body += `<img src="${m.file_url}" onclick="lightbox('${m.file_url}')" />`;
+    else body += `<a class="file" href="${m.file_url}" target="_blank" download>📄 ${esc(m.file_name||"파일")}</a>`;
+  }
+  div.innerHTML = `<div class="nm">${esc(m.name)}</div>${body}<div class="t">${fmtTime(m.created_at)}</div>`;
+  list.appendChild(div);
+  list.scrollTop = list.scrollHeight;
+}
+async function pushMsg(m){
+  m.created_at = m.created_at || nowISO();
+  if(sb){
+    const { error } = await sb.from("messages").insert(m);
+    if(error){ console.error(error); toast("전송 실패"); }
+    // realtime 구독이 렌더링 담당
+  }else{
+    const arr = localGet("messages"); arr.push(m); localSet("messages", arr);
+    renderMsg(m);
+  }
+}
+function subscribeChat(){
+  chatChannel = sb.channel("room-messages")
+    .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},payload=>{
+      renderMsg(payload.new);
+    }).subscribe();
+}
+function chatKey(e){ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendChat(); } }
+async function sendChat(){
+  const ta = document.getElementById("chatInput");
+  const text = ta.value.trim();
+  if(!text) return;
+  ta.value="";
+  await pushMsg({ name: me, text });
+  if(/^@ai\b/i.test(text)){ await aiReply(text.replace(/^@ai\b/i,"").trim()); }
+}
+async function aiReply(question){
+  if(!cfg.geminiKey){ await pushMsg({name:"AI", text:"⚠️ AI 키가 없습니다. 설정에서 무료 Gemini 키를 넣어주세요."}); return; }
+  // 최근 대화 맥락
+  let ctx = [];
+  if(sb){ const {data}=await sb.from("messages").select("name,text").order("created_at",{ascending:false}).limit(12); ctx=(data||[]).reverse(); }
+  else { ctx = localGet("messages").slice(-12); }
+  const convo = ctx.filter(m=>m.text).map(m=>`${m.name}: ${m.text}`).join("\n");
+  const prompt = `당신은 팀 채팅방의 AI 비서입니다. 아래 최근 대화 맥락을 참고해 한국어로 간결하고 도움이 되게 답하세요.\n\n[최근 대화]\n${convo}\n\n[질문]\n${question}`;
+  const holder = {name:"AI", text:"…생각 중"}; renderMsg({...holder, created_at:nowISO()});
+  try{
+    const ans = await askGemini(prompt);
+    await pushMsg({name:"AI", text: ans || "(응답 없음)"});
+  }catch(e){ console.error(e); await pushMsg({name:"AI", text:"⚠️ AI 호출 실패: "+e.message}); }
+}
+
+/* ---------------- files ---------------- */
+function onFile(ev){
+  const f = ev.target.files[0]; ev.target.value="";
+  if(!f) return;
+  if(f.type.startsWith("image")){ compressImage(f, dataUrl=>uploadOrEmbed(f, dataUrl)); }
+  else{
+    if(f.size > 8*1024*1024){ toast("파일이 8MB를 초과합니다."); return; }
+    const r = new FileReader(); r.onload = ()=>uploadOrEmbed(f, r.result); r.readAsDataURL(f);
+  }
+}
+function compressImage(file, cb){
+  const img = new Image(); const r = new FileReader();
+  r.onload = ()=>{ img.onload=()=>{
+    const max=1280; let {width:w,height:h}=img;
+    if(w>max||h>max){ const s=Math.min(max/w,max/h); w=Math.round(w*s); h=Math.round(h*s); }
+    const c=document.createElement("canvas"); c.width=w; c.height=h;
+    c.getContext("2d").drawImage(img,0,0,w,h);
+    cb(c.toDataURL("image/jpeg",0.82));
+  }; img.src=r.result; };
+  r.readAsDataURL(file);
+}
+async function uploadOrEmbed(file, dataUrl){
+  if(sb){
+    try{
+      const path = `${Date.now()}_${file.name}`.replace(/[^\w.\-]/g,"_");
+      const blob = await (await fetch(dataUrl)).blob();
+      const { error } = await sb.storage.from("files").upload(path, blob, {contentType:file.type||"application/octet-stream"});
+      if(error) throw error;
+      const { data } = sb.storage.from("files").getPublicUrl(path);
+      await pushMsg({name:me, file_url:data.publicUrl, file_type:file.type, file_name:file.name});
+    }catch(e){ console.error(e); toast("업로드 실패: "+e.message); }
+  }else{
+    if(dataUrl.length > 3.5*1024*1024){ toast("로컬 모드에선 큰 파일 저장이 제한됩니다."); return; }
+    await pushMsg({name:me, file_url:dataUrl, file_type:file.type, file_name:file.name});
+  }
+}
+function lightbox(src){ document.getElementById("lightImg").src=src; document.getElementById("lightbox").classList.remove("hidden"); }
+
+/* ---------------- Gemini ---------------- */
+async function askGemini(prompt){
+  const key = cfg.geminiKey;
+  if(!key) throw new Error("NO_KEY");
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(key)}`;
+  const res = await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
+  if(!res.ok){ const t=await res.text(); throw new Error(res.status+" "+t.slice(0,120)); }
+  const d = await res.json();
+  return d.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
+
+/* ---------------- meeting recording ---------------- */
+let recog=null, recording=false;
+function toggleRec(){
+  if(recording){ stopRec(); return; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ toast("이 브라우저는 음성인식 미지원 — 회의록을 직접 붙여넣으세요 (Chrome 권장)"); return; }
+  recog = new SR(); recog.lang="ko-KR"; recog.continuous=true; recog.interimResults=true;
+  let base = document.getElementById("transcript").value;
+  recog.onresult=(e)=>{
+    let interim="", finalT="";
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const r=e.results[i];
+      if(r.isFinal) finalT+=r[0].transcript+" "; else interim+=r[0].transcript;
+    }
+    if(finalT) base += finalT;
+    document.getElementById("transcript").value = base + interim;
+  };
+  recog.onerror=(e)=>{ console.error("speech err",e); };
+  recog.onend=()=>{ if(recording){ try{recog.start();}catch(_){} } }; // 자동 재시작
+  recog.start(); recording=true;
+  document.getElementById("recBtn").textContent="■ 회의 종료";
+  document.getElementById("recPill").classList.remove("hidden");
+  document.getElementById("recPill").className="pill rec";
+}
+function stopRec(){
+  recording=false;
+  try{ recog && recog.stop(); }catch(_){}
+  document.getElementById("recBtn").textContent="● 회의 시작";
+  document.getElementById("recPill").classList.add("hidden");
+  toast("녹음 종료 — 'AI로 분석·저장'을 누르세요");
+}
+async function analyzeMeeting(){
+  const transcript = document.getElementById("transcript").value.trim();
+  const title = document.getElementById("meetTitle").value.trim() || ("회의 "+fmtTime(nowISO()));
+  if(!transcript){ toast("분석할 회의 내용이 없습니다."); return; }
+  if(!cfg.geminiKey){ toast("AI 키가 필요합니다 (설정에서 Gemini 키 입력)"); return; }
+  const out = document.getElementById("meetResult");
+  out.innerHTML = `<div class="box"><div class="muted">🧠 AI가 회의를 분석 중…</div></div>`;
+  const prompt = `다음 회의 전사 내용을 분석해 JSON만 출력하세요. 형식:
+{"summary":"3~5문장 회의 요약","decisions":["결정사항"],"actions":[{"assignee":"담당자이름","task":"할 일","due":"기한(없으면 빈문자)"}],"members":[{"name":"직원이름","work":"이번 업무","performance":"성과/기여"}]}
+설명 없이 JSON만. 담당자·직원 이름은 전사에 등장한 실제 이름을 쓰세요.
+
+[회의 전사]
+${transcript}`;
+  try{
+    let raw = await askGemini(prompt);
+    const j = raw.indexOf("{"), k = raw.lastIndexOf("}");
+    const parsed = JSON.parse(raw.slice(j, k+1));
+    const rec = { id: Date.now(), title, transcript, summary: parsed, created_at: nowISO() };
+    await saveMeeting(rec);
+    renderMeetResult(rec);
+    document.getElementById("transcript").value="";
+    document.getElementById("meetTitle").value="";
+    renderMeetHistory();
+    toast("회의 분석·저장 완료");
+  }catch(e){
+    console.error(e);
+    out.innerHTML = `<div class="box"><div class="muted">분석 실패: ${esc(e.message)}. 잠시 후 다시 시도하세요.</div></div>`;
+  }
+}
+async function saveMeeting(rec){
+  if(sb){
+    const { error } = await sb.from("meetings").insert({title:rec.title, transcript:rec.transcript, summary:rec.summary, created_at:rec.created_at});
+    if(error){ console.error(error); toast("회의 저장 실패(서버) — 로컬 보관"); const a=localGet("meetings"); a.push(rec); localSet("meetings",a); }
+  }else{ const a=localGet("meetings"); a.push(rec); localSet("meetings",a); }
+}
+async function getMeetings(){
+  if(sb){ const {data,error}=await sb.from("meetings").select("*").order("created_at",{ascending:false}).limit(50);
+    if(error){ console.error(error); return localGet("meetings").reverse(); } return data||[]; }
+  return localGet("meetings").slice().reverse();
+}
+function renderMeetResult(rec){
+  const s = rec.summary || {};
+  const acts = (s.actions||[]).map(a=>`<tr><td>${esc(a.assignee||"")}</td><td>${esc(a.task||"")}</td><td>${esc(a.due||"-")}</td></tr>`).join("");
+  const mem = (s.members||[]).map(m=>`<tr><td>${esc(m.name||"")}</td><td>${esc(m.work||"")}</td><td>${esc(m.performance||"")}</td></tr>`).join("");
+  document.getElementById("meetResult").innerHTML = `
+    <div class="box">
+      <h3>${esc(rec.title)}</h3>
+      <div class="ai-out">${esc(s.summary||"")}</div>
+      ${(s.decisions&&s.decisions.length)?`<h3 style="margin-top:14px">결정사항</h3><ul>${s.decisions.map(d=>`<li>${esc(d)}</li>`).join("")}</ul>`:""}
+      ${acts?`<h3 style="margin-top:14px">액션아이템</h3><table><tr><th>담당</th><th>할 일</th><th>기한</th></tr>${acts}</table>`:""}
+      ${mem?`<h3 style="margin-top:14px">직원별 업무·성과</h3><table><tr><th>이름</th><th>업무</th><th>성과</th></tr>${mem}</table>`:""}
+    </div>`;
+}
+async function renderMeetHistory(){
+  const el = document.getElementById("meetHistory");
+  if(!el) return;
+  const ms = await getMeetings();
+  if(!ms.length){ el.innerHTML='<span class="muted">아직 저장된 회의가 없습니다.</span>'; return; }
+  el.innerHTML = ms.map(m=>`<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:8px 0">
+      <span>🗓 <b>${esc(m.title)}</b> <span class="muted">· ${fmtTime(m.created_at)}</span></span>
+      <span class="muted">${esc(((m.summary||{}).summary||"").slice(0,40))}…</span></div>`).join("");
+}
+
+/* ---------------- briefing ---------------- */
+async function makeBriefing(){
+  if(!cfg.geminiKey){ toast("AI 키가 필요합니다."); return; }
+  const out = document.getElementById("briefOut");
+  out.innerHTML = `<div class="box"><div class="muted">📋 브리핑 생성 중…</div></div>`;
+  const ms = await getMeetings();
+  const summaries = ms.slice(0,8).map(m=>`■ ${m.title} (${fmtTime(m.created_at)})\n요약: ${(m.summary||{}).summary||""}\n액션: ${((m.summary||{}).actions||[]).map(a=>`${a.assignee}-${a.task}(${a.due||"미정"})`).join("; ")}`).join("\n\n");
+  let chat=[];
+  if(sb){ const {data}=await sb.from("messages").select("name,text").order("created_at",{ascending:false}).limit(20); chat=(data||[]).reverse(); }
+  else chat=localGet("messages").slice(-20);
+  const chatTxt = chat.filter(m=>m.text).map(m=>`${m.name}: ${m.text}`).join("\n");
+  const prompt = `당신은 팀 매니저를 돕는 AI입니다. 아래 자료로 '오늘 회의 전 브리핑'을 한국어로 작성하세요.
+포함: (1)핵심 현황 3줄 (2)미해결·기한임박 액션아이템(담당자별) (3)직원별 최근 성과 한 줄 (4)오늘 논의 추천 안건.
+간결한 개조식으로.
+
+[최근 회의 요약]
+${summaries || "회의 기록 없음"}
+
+[최근 대화]
+${chatTxt || "대화 없음"}`;
+  try{
+    const b = await askGemini(prompt);
+    out.innerHTML = `<div class="box"><h3>📋 오늘의 브리핑 · ${fmtTime(nowISO())}</h3><div class="ai-out">${esc(b)}</div></div>`;
+  }catch(e){ out.innerHTML=`<div class="box"><div class="muted">생성 실패: ${esc(e.message)}</div></div>`; }
+}
+
+/* ---------------- dashboard ---------------- */
+async function renderDashboard(){
+  const out = document.getElementById("dashOut");
+  const ms = await getMeetings();
+  const byPerson = {};
+  for(const m of ms){
+    const s = m.summary||{};
+    for(const a of (s.actions||[])){
+      const n=a.assignee||"미지정"; (byPerson[n]=byPerson[n]||{actions:[],perf:[]}).actions.push(a);
+    }
+    for(const p of (s.members||[])){
+      const n=p.name||"미지정"; (byPerson[n]=byPerson[n]||{actions:[],perf:[]}).perf.push(p.performance||p.work||"");
+    }
+  }
+  const names = Object.keys(byPerson);
+  if(!names.length){ out.innerHTML='<div class="box"><div class="muted">회의를 분석하면 직원별 집계가 여기에 표시됩니다.</div></div>'; return; }
+  out.innerHTML = names.map(n=>{
+    const d=byPerson[n];
+    const acts=d.actions.map(a=>`<tr><td>${esc(a.task||"")}</td><td>${esc(a.due||"-")}</td></tr>`).join("");
+    return `<div class="box"><h3>👤 ${esc(n)}</h3>
+      <div class="muted">액션아이템 ${d.actions.length}건 · 성과기록 ${d.perf.length}건</div>
+      ${acts?`<table style="margin-top:8px"><tr><th>할 일</th><th>기한</th></tr>${acts}</table>`:""}
+      <button class="btn ghost sm" style="margin-top:10px" onclick="perfSummary('${esc(n).replace(/'/g,"")}')">🧠 AI 성과요약</button>
+      <div id="perf-${btoa(unescape(encodeURIComponent(n))).replace(/=/g,'')}" class="ai-out" style="margin-top:8px"></div>
+    </div>`;
+  }).join("");
+}
+async function perfSummary(name){
+  const ms = await getMeetings();
+  const notes=[];
+  for(const m of ms){ for(const p of ((m.summary||{}).members||[])){ if((p.name||"")===name) notes.push(`${m.title}: ${p.work||""} / 성과:${p.performance||""}`); }
+    for(const a of ((m.summary||{}).actions||[])){ if((a.assignee||"")===name) notes.push(`할일:${a.task}(${a.due||"미정"})`); } }
+  const id = "perf-"+btoa(unescape(encodeURIComponent(name))).replace(/=/g,'');
+  const box = document.getElementById(id); if(box) box.textContent="🧠 요약 중…";
+  if(!cfg.geminiKey){ if(box) box.textContent="AI 키가 필요합니다."; return; }
+  try{
+    const ans = await askGemini(`다음은 '${name}' 직원의 회의 기록입니다. 최근 업무·성과·다가오는 마감을 3~4줄로 한국어 요약하세요.\n\n${notes.join("\n")||"기록 없음"}`);
+    if(box) box.textContent = ans;
+  }catch(e){ if(box) box.textContent="실패: "+e.message; }
+}
+
+/* ---------------- settings ---------------- */
+function fillSettings(){
+  document.getElementById("setUrl").value=cfg.supaUrl||"";
+  document.getElementById("setKey").value=cfg.supaKey||"";
+  document.getElementById("setGemini").value=cfg.geminiKey||"";
+  document.getElementById("setPass").value=cfg.password||"1234";
+  document.getElementById("statusOut").innerHTML =
+    `모드: <b>${sb?"팀 연결(Supabase)":"로컬 데모"}</b><br>AI: <b>${cfg.geminiKey?"Gemini 연결됨":"미설정"}</b><br>음성인식: <b>${(window.SpeechRecognition||window.webkitSpeechRecognition)?"지원":"미지원(Chrome 권장)"}</b>`;
+}
+function saveSettings(){
+  cfg.supaUrl=document.getElementById("setUrl").value.trim();
+  cfg.supaKey=document.getElementById("setKey").value.trim();
+  cfg.geminiKey=document.getElementById("setGemini").value.trim();
+  cfg.password=document.getElementById("setPass").value.trim()||"1234";
+  LS.setItem("spacek_cfg", JSON.stringify(cfg));
+  toast("저장됨 — 새로고침합니다"); setTimeout(()=>location.reload(),700);
+}
+function wipeLocal(){
+  if(!confirm("이 기기의 로컬 채팅·회의 데이터를 삭제할까요? (설정은 유지)")) return;
+  LS.removeItem("spacek_messages"); LS.removeItem("spacek_meetings");
+  toast("로컬 데이터 삭제됨"); setTimeout(()=>location.reload(),600);
+}
+
+/* ---------------- start ---------------- */
+boot();
+</script>
+</body>
+</html>
